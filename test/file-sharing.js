@@ -9,11 +9,15 @@ const MockDistributedPeer = require('./mock-distributed-peer.js')
 const MockDefaultPeer = require('./mock-default-peer.js')
 
 describe('file-sharing', () => {
+  after(() => {
+    mockServer.destroy()
+  })
+
   let baseFolder = '/tmp/slsk-client/file-sharing'
   createFolder(baseFolder)
   fs.writeFileSync(baseFolder + '/great song.mp3', 'data')
 
-  const serverAddress = { host: '127.0.0.1', port: 2243 }
+  const serverAddress = { host: 'localhost', port: 2243 }
   const distributedPeerAddress = { host: '127.0.0.1', port: 3250 }
   const defaultPeerAddress = { host: '127.0.0.1', port: 4250 }
 
@@ -23,12 +27,7 @@ describe('file-sharing', () => {
     .on('get-peer-address', getPeerAddress => mockServer.returnPeerAddress(getPeerAddress.client, 'user', defaultPeerAddress.host, defaultPeerAddress.port))
 
   let mockDistributedPeer = new MockDistributedPeer(distributedPeerAddress)
-    .on('peer-init', peerInfo => {
-      let ticket = crypto.randomBytes(4).toString('hex')
-      mockDistributedPeer.searchRequest(peerInfo.client, 'user', ticket, 'song')
-      // the second search request is to verify handling of the same request received eventually from another 'parent' (real case)
-      mockDistributedPeer.searchRequest(peerInfo.client, 'user', ticket, 'song')
-    })
+    .on('peer-init', peerInfo => mockDistributedPeer.searchRequest(peerInfo.client, 'user', crypto.randomBytes(4).toString('hex'), 'song'))
 
   let mockDefaultPeer = new MockDefaultPeer(defaultPeerAddress)
 
@@ -42,19 +41,10 @@ describe('file-sharing', () => {
     }, () => {})
 
     mockDefaultPeer.on('file-search-result', fileSearchResult => {
-      let file = fileSearchResult.files[0]
-      assert.strictEqual(file.file, baseFolder + '/great song.mp3')
-      assert.strictEqual(file.size, 4)
-      assert.strictEqual(file.user, 'any')
+      assert.strictEqual(fileSearchResult.files[0].file, baseFolder + '/great song.mp3')
       done()
     })
   }).timeout(5000)
-
-  after(() => {
-    mockServer.destroy()
-    mockDistributedPeer.destroy()
-    mockDefaultPeer.destroy()
-  })
 })
 
 function createFolder (path) {
